@@ -1,0 +1,75 @@
+import { test, expect } from '@playwright/test';
+
+const id = Date.now().toString().slice(-8);
+const email = `e2e-${id}@test.pe`;
+const password = 'Clave-segura-1';
+test('registro RUC con contraseña → panel comercial → login por email → control global', async ({ page }) => {
+  await page.goto('/registro');
+  await expect(page.locator('.auth-card')).toHaveCSS('border-radius', '16px');
+  await expect(page.locator('.auth-card')).not.toHaveCSS('box-shadow', 'none');
+  await page.getByLabel('RUC', { exact: true }).fill(`20${id.padStart(9, '0')}`);
+  await page.getByLabel('DNI personal del titular').fill(id);
+  await page.getByLabel('Nombre del comercio').fill(`Bodega E2E ${id}`);
+  await page.getByLabel('Tipo de negocio').selectOption('Bodega');
+  await page.getByLabel('Email de contacto').fill(email);
+  await page.getByLabel('Contraseña', { exact: true }).fill(password);
+  await page.getByLabel('Confirmar contraseña').fill(password);
+  await page.getByRole('button', { name: 'Crear mi cuenta' }).click();
+  await expect(page).toHaveURL(/\/comercio$/);
+  await expect(page.getByRole('heading', { name: 'Panel de tu comercio' })).toBeVisible();
+  await expect(page.getByText(email)).toBeVisible();
+  await page.getByRole('button', { name: 'Cerrar sesión' }).click();
+  await expect(page).toHaveURL(/\/login$/);
+  await page.waitForLoadState('networkidle');
+
+  await page.getByLabel('Correo electrónico').fill(email);
+  await page.getByLabel('Contraseña', { exact: true }).fill(password);
+  await page.getByRole('button', { name: 'Ingresar' }).click();
+  await expect(page).toHaveURL(/\/comercio$/);
+
+  await page.getByRole('button', { name: 'Cerrar sesión' }).click();
+  await page.waitForLoadState('networkidle');
+  await page.getByLabel('Correo electrónico').fill('platform@test.pe');
+  await page.getByLabel('Contraseña', { exact: true }).fill('Platform-test-password-9');
+  await page.getByRole('button', { name: 'Ingresar' }).click();
+  await expect(page).toHaveURL(/\/superadmin\/comercios/);
+  await expect(page.getByRole('heading', { name: 'Usuarios y negocios' })).toBeVisible();
+  const row = page.locator('tr').filter({ hasText: email });
+  await expect(row).toBeVisible();
+  await row.getByRole('button', { name: 'Desactivar' }).click();
+  await expect(row.getByRole('button', { name: 'Activar' })).toBeVisible();
+  await row.getByRole('button', { name: 'Activar' }).click();
+  await expect(row.getByRole('button', { name: 'Desactivar' })).toBeVisible();
+  await row.getByRole('button', { name: 'Probar panel' }).click();
+  await expect(page).toHaveURL(/\/comercio$/);
+  await expect(page.getByText('Modo de prueba global.')).toBeVisible();
+  await page.getByRole('button', { name: 'Volver a gestión global' }).click();
+  await expect(page).toHaveURL(/\/superadmin\/comercios/);
+});
+
+test('registro DNI muestra el panel para persona natural con negocio', async ({ page }) => {
+  await page.goto('/registro');
+  await page.getByLabel('Tengo DNI').check();
+  await page.getByLabel('DNI', { exact: true }).fill(id);
+  await page.getByLabel('Nombre de tu negocio').fill(`Negocio personal ${id}`);
+  await page.getByLabel('Tipo de negocio').selectOption('Peluquería');
+  await page.getByLabel('Email de contacto').fill(`dni-${email}`);
+  await page.getByLabel('Contraseña', { exact: true }).fill(password);
+  await page.getByLabel('Confirmar contraseña').fill(password);
+  await page.getByRole('button', { name: 'Crear mi cuenta' }).click();
+  await expect(page).toHaveURL(/\/negocio-personal$/);
+  await expect(page.getByRole('heading', { name: 'Panel de mi negocio' })).toBeVisible();
+  await page.getByRole('button', { name: 'Cerrar sesión' }).click();
+  await expect(page).toHaveURL(/\/login$/);
+  await page.getByLabel('Correo electrónico').fill('platform@test.pe');
+  await page.getByLabel('Contraseña', { exact: true }).fill('Platform-test-password-9');
+  await page.getByRole('button', { name: 'Ingresar' }).click();
+  await expect(page).toHaveURL(/\/superadmin\/comercios/);
+  const row = page.locator('tr').filter({ hasText: `dni-${email}` });
+  await expect(row).toBeVisible();
+  await row.getByRole('button', { name: 'Probar panel' }).click();
+  await expect(page).toHaveURL(/\/negocio-personal$/);
+  await expect(page.getByText('Modo de prueba global.')).toBeVisible();
+  await page.getByRole('button', { name: 'Volver a gestión global' }).click();
+  await expect(page).toHaveURL(/\/superadmin\/comercios/);
+});

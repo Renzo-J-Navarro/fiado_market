@@ -1,0 +1,17 @@
+# Local environment files can contain credentials. Commit only sanitized templates.
+**/.env
+**/.env.*
+!**/.env.example
+!**/.env.test.example
+!**/.env.local.example
+**/.env_test
+**/.env_test.*
+
+node_modules/
+.next/
+coverage/
+playwright-report/
+test-results/
+
+# This project has independent dependency manifests under backend/ and frontend/.
+/package-lock.json

@@ -1,0 +1,239 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html { min-height: 100%; }
+  body { min-height: 100vh; font-family: Arial, Helvetica, sans-serif; }
+  button, a, input, select { transition: color 150ms ease, background-color 150ms ease, border-color 150ms ease, opacity 150ms ease; }
+  input, select { color-scheme: light dark; }
+}
+
+@layer components {
+  .auth-page {
+    @apply flex min-h-screen items-center justify-center px-4 py-8;
+    background:
+      radial-gradient(ellipse at 12% 18%, rgb(91 226 227 / 15%), transparent 34%),
+      radial-gradient(ellipse at 88% 84%, rgb(73 160 245 / 13%), transparent 35%),
+      #f5f9fc;
+  }
+  .auth-card {
+    @apply grid w-full overflow-hidden rounded-2xl border border-white bg-white shadow-2xl;
+    max-width: 1000px;
+    grid-template-columns: minmax(0, 1.08fr) minmax(300px, .92fr);
+    box-shadow: 0 28px 80px rgb(34 111 164 / 17%), 0 3px 12px rgb(15 23 42 / 5%);
+  }
+  .auth-card-wide { max-width: 1120px; grid-template-columns: minmax(0, 1.22fr) minmax(300px, .78fr); }
+  .auth-form { @apply flex min-w-0 flex-col bg-white; padding: clamp(28px, 5vw, 58px); color: #0f172a; }
+  .auth-brand { @apply mb-8 flex items-center gap-3; }
+  .auth-brand > span:last-child { @apply grid gap-0.5; }
+  .auth-brand strong { @apply text-lg font-bold tracking-tight text-slate-900; }
+  .auth-brand small { @apply text-[9px] font-semibold tracking-[.18em] text-slate-400; }
+  .brand-mark {
+    @apply grid h-12 w-12 shrink-0 place-items-center rounded-2xl text-white;
+    background: linear-gradient(145deg, #1bcbd2, #258ee8);
+    box-shadow: 0 8px 18px rgb(41 173 213 / 27%);
+  }
+  .brand-mark svg { @apply h-9 w-9; }
+  .auth-heading { @apply mb-6; }
+  .auth-heading h1 { @apply mt-2 text-3xl font-bold tracking-tight text-slate-900; }
+  .auth-heading .muted { @apply mt-2; color: #64748b; }
+  .eyebrow { @apply text-[11px] font-bold tracking-[.16em] text-cyan-700; }
+  .muted { @apply text-sm leading-6 text-slate-600 dark:text-slate-300; }
+  .auth-fields { @apply flex flex-col gap-4; }
+  .auth-fields label { color: #334155; }
+  .auth-fields > .auth-select-field { font-size: .875rem; font-weight: 500; color: #334155; }
+  .auth-fields input:not([type="radio"]), .auth-fields select {
+    @apply mt-1.5 block w-full rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-sm text-slate-800;
+    color-scheme: light;
+    min-height: 46px;
+    box-shadow: inset 0 1px 2px rgb(15 23 42 / 3%);
+  }
+  .auth-fields input:not([type="radio"]):focus, .auth-fields select:focus {
+    @apply border-cyan-400 outline-none ring-4 ring-cyan-100;
+  }
+  .auth-fields input::placeholder { @apply text-slate-400; }
+  .auth-fields > button {
+    @apply min-h-12 rounded-xl font-semibold;
+    background-image: linear-gradient(100deg, #25cbd3, #3998ef);
+    box-shadow: 0 8px 18px rgb(47 166 221 / 23%);
+  }
+  .auth-fields > button:hover { background-image: linear-gradient(100deg, #16b8c5, #2788e1); }
+  .auth-footer { @apply text-center text-sm text-slate-500; }
+  .auth-footer a { @apply font-semibold text-sky-700 underline-offset-4 hover:underline; }
+  .auth-fields > .auth-footer + .auth-footer { @apply -mt-2 text-xs; }
+  .account-choice { @apply grid gap-2 sm:grid-cols-2; }
+  .account-choice legend { @apply mb-2 text-sm font-semibold text-slate-700; }
+  .choice { @apply flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 bg-white p-3.5 text-sm; }
+  .choice.selected { @apply border-cyan-400 bg-cyan-50 ring-1 ring-cyan-300; }
+  .choice input { @apply mt-1 accent-cyan-600; }
+  .choice strong { color: #1e293b; }
+  .choice span { @apply grid gap-1; }
+  .choice small { @apply text-xs text-slate-500; }
+  .auth-aside {
+    @apply relative flex min-h-full flex-col justify-between overflow-hidden px-8 py-8 text-white;
+    background: linear-gradient(145deg, #35d7dc 0%, #37bce7 48%, #4f9cf0 100%);
+  }
+  .auth-aside::before, .auth-aside::after { @apply pointer-events-none absolute rounded-full; content: ""; }
+  .auth-aside::before { width: 300px; height: 300px; top: -150px; right: -120px; border: 1px solid rgb(255 255 255 / 22%); }
+  .auth-aside::after { width: 240px; height: 240px; bottom: -155px; left: -100px; background: rgb(255 255 255 / 8%); }
+  .auth-aside-content { @apply relative z-10 m-auto w-full max-w-sm; }
+  .auth-aside-kicker { @apply text-[10px] font-bold tracking-[.18em] text-white/75; }
+  .auth-illustration { @apply mx-auto my-6 w-full max-w-[270px]; filter: drop-shadow(0 16px 18px rgb(17 94 137 / 16%)); }
+  .auth-aside h2 { @apply text-2xl font-bold tracking-tight; }
+  .auth-aside-content > p:not(.auth-aside-kicker) { @apply mt-2 max-w-xs text-sm leading-6 text-white/85; }
+  .auth-aside-points { @apply mt-6 grid gap-3 text-xs font-medium text-white/90; }
+  .auth-aside-points span { @apply flex items-center gap-2.5; }
+  .auth-aside-points i { @apply h-1.5 w-1.5 rounded-full bg-white; box-shadow: 0 0 0 4px rgb(255 255 255 / 18%); }
+  .auth-aside-footer { @apply relative z-10 mt-8 text-center text-[11px] text-white/70; }
+  .auth-orbit { @apply pointer-events-none absolute rounded-full border border-white/20; }
+  .auth-orbit-one { width: 180px; height: 180px; top: 16%; left: -130px; }
+  .auth-orbit-two { width: 110px; height: 110px; right: -75px; bottom: 23%; }
+  .app-header { @apply flex flex-wrap items-center gap-4 border-b border-slate-200 bg-white px-4 py-3 shadow-sm dark:border-slate-800 dark:bg-slate-900; }
+  .app-brand { @apply flex items-center gap-2 font-bold tracking-tight; }
+  .brand-mini { @apply grid h-8 w-8 place-items-center rounded-lg bg-indigo-600 text-white; }
+  .app-nav { @apply flex flex-1 flex-wrap gap-2 text-sm; }
+  .nav-link { @apply rounded-lg px-3 py-2 text-slate-600 hover:bg-indigo-50 hover:text-indigo-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-indigo-300; }
+  .logout-link { @apply ml-auto rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800; }
+  .app-main { @apply mx-auto max-w-6xl px-4 py-8 md:px-8; }
+  .page-title { @apply mb-5 text-2xl font-bold tracking-tight; }
+  .dashboard-card { @apply rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900; }
+  .dashboard-link { @apply inline-flex items-center justify-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500; }
+  .status-pill { @apply inline-flex rounded-full px-2.5 py-1 text-xs font-semibold; }
+  .status-active { @apply bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300; }
+  .status-disabled { @apply bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300; }
+}
+
+@media (max-width: 760px) {
+  .auth-page { @apply items-start px-3 py-4; }
+  .auth-card, .auth-card-wide { @apply max-w-xl; grid-template-columns: minmax(0, 1fr); }
+  .auth-form { padding: clamp(22px, 6vw, 38px); }
+  .auth-brand { @apply mb-6; }
+  .auth-aside { @apply min-h-0 px-6 py-7; }
+  .auth-aside-content { @apply max-w-md; }
+  .auth-illustration { @apply my-3 max-w-[190px]; }
+  .auth-aside h2 { @apply text-xl; }
+  .auth-aside-points { @apply grid-cols-2; }
+  .auth-aside-points span:last-child { @apply hidden; }
+  .auth-aside-footer { @apply mt-5; }
+}
+
+@layer components {
+  .workspace-page { @apply space-y-5; color: #172b3a; }
+  .workspace-intro { @apply max-w-3xl text-sm leading-6; color: #64748b; }
+  .workspace-stats { @apply grid gap-3 sm:grid-cols-3; }
+  .workspace-stat { @apply flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm; }
+  .workspace-stat > span:last-child { @apply grid gap-0.5; }
+  .workspace-stat small { @apply text-xs font-medium text-slate-500; }
+  .workspace-stat strong { @apply text-lg font-bold text-slate-900; }
+  .workspace-stat-icon { @apply grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-cyan-50 text-cyan-700; }
+  .workspace-grid { @apply grid items-start gap-5; }
+  .workspace-customer-grid { grid-template-columns: minmax(280px, .78fr) minmax(0, 1.55fr); }
+  .workspace-product-grid { grid-template-columns: minmax(280px, .78fr) minmax(0, 1.55fr); }
+  .workspace-pos-grid { grid-template-columns: minmax(300px, .86fr) minmax(0, 1.5fr); }
+  .workspace-card { @apply min-w-0 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm; color: #172b3a; }
+  .workspace-form { @apply grid gap-4; }
+  .workspace-card-heading { @apply mb-4 flex items-center gap-3; }
+  .workspace-card-heading > div { @apply grid gap-1; }
+  .workspace-card-heading h2 { @apply text-base font-bold text-slate-900; }
+  .workspace-card-heading p { @apply text-xs leading-5 text-slate-500; }
+  .workspace-step { @apply grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-cyan-50 text-sm font-bold text-cyan-700; }
+  .workspace-form-grid { @apply grid gap-3; }
+  .workspace-form [class~="text-sm"], .workspace-field { font-size: .75rem; font-weight: 600; color: #334155; }
+  .workspace-form input:not([type="checkbox"]):not([type="radio"]), .workspace-form select,
+  .workspace-field input, .workspace-field select {
+    @apply mt-1.5 block min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-normal text-slate-800;
+    color-scheme: light;
+  }
+  .workspace-form input:focus, .workspace-form select:focus, .workspace-field input:focus, .workspace-field select:focus {
+    @apply border-cyan-400 outline-none ring-4 ring-cyan-100;
+  }
+  .workspace-form-pair { @apply grid grid-cols-2 gap-3; }
+  .workspace-form-note { @apply text-xs leading-5 text-slate-500; }
+  .workspace-primary-button {
+    @apply inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border-0 px-4 font-semibold text-white;
+    background: linear-gradient(100deg, #1cbfca, #338ee7);
+    box-shadow: 0 7px 16px rgb(47 166 221 / 20%);
+  }
+  .workspace-primary-button:hover:not(:disabled) { background: linear-gradient(100deg, #0daebc, #267dd5); }
+  .workspace-primary-button:disabled { @apply cursor-not-allowed opacity-50; }
+  .workspace-secondary-button { @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:border-cyan-300 hover:bg-cyan-50; }
+  .workspace-list-card { @apply min-h-48; }
+  .workspace-table-wrap { @apply w-full overflow-x-auto; }
+  .workspace-table { @apply w-full border-collapse text-left text-xs; min-width: 660px; }
+  .workspace-table th { @apply whitespace-nowrap border-b border-slate-200 bg-slate-50 px-3 py-3 font-semibold text-slate-500; }
+  .workspace-table td { @apply border-b border-slate-100 px-3 py-3 align-top text-slate-700; }
+  .workspace-table tbody tr:last-child td { @apply border-b-0; }
+  .workspace-table td strong { @apply block font-semibold text-slate-800; }
+  .workspace-table td small { @apply mt-1 block text-[11px] leading-4 text-slate-500; }
+  .workspace-empty { @apply grid min-h-40 place-content-center justify-items-center gap-2 text-center text-slate-400; }
+  .workspace-empty strong { @apply text-sm font-semibold text-slate-700; }
+  .workspace-empty span { @apply text-xs text-slate-500; }
+  .workspace-access { @apply inline-flex whitespace-nowrap rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700; }
+  .workspace-access-active { @apply bg-emerald-50 text-emerald-700; }
+  .workspace-text-button { @apply whitespace-nowrap font-semibold text-cyan-700 underline-offset-2 hover:underline disabled:opacity-50; }
+  .workspace-list-note { @apply mt-4 rounded-xl bg-slate-50 p-3 text-xs leading-5 text-slate-600; }
+  .workspace-invite { @apply flex flex-wrap items-start justify-between gap-4 rounded-2xl border border-cyan-200 bg-cyan-50 p-4; }
+  .workspace-invite h2 { @apply text-sm font-bold text-slate-900; }
+  .workspace-invite p { @apply mt-1 max-w-3xl text-xs leading-5 text-slate-600; }
+  .workspace-invite code { @apply mt-2 block break-all rounded-lg bg-white p-2 text-xs text-slate-700; }
+  .workspace-invite-actions { @apply flex flex-wrap gap-2; }
+  .workspace-product-cards { @apply grid gap-4 sm:grid-cols-2 xl:grid-cols-3; }
+  .workspace-product-card { @apply overflow-hidden rounded-2xl border border-slate-200 bg-white; }
+  .workspace-product-image, .workspace-product-placeholder { @apply h-36 w-full object-cover; }
+  .workspace-product-placeholder { @apply grid place-items-center bg-gradient-to-br from-cyan-50 to-sky-100 text-cyan-600; }
+  .workspace-product-info { @apply grid gap-3 p-4; }
+  .workspace-product-info h3 { @apply truncate text-sm font-bold text-slate-900; }
+  .workspace-prices { @apply grid gap-2 text-xs text-slate-500; }
+  .workspace-prices span { @apply flex items-center justify-between gap-2; }
+  .workspace-prices strong { @apply font-semibold text-slate-800; }
+  .workspace-product-modes { @apply border-t border-slate-100 pt-2 text-[11px] text-slate-500; }
+  .workspace-options { @apply grid gap-2; }
+  .workspace-options legend { @apply mb-1 text-xs font-semibold text-slate-700; }
+  .workspace-options label { @apply flex items-center gap-2 rounded-xl border border-slate-200 p-3 text-xs font-medium text-slate-700; }
+  .workspace-options input { @apply accent-cyan-600; }
+  .workspace-options .option-disabled { @apply cursor-not-allowed opacity-40; }
+  .workspace-quote { @apply grid gap-2 rounded-2xl border border-cyan-100 bg-cyan-50/70 p-4 text-xs; }
+  .workspace-quote h3 { @apply mb-1 text-sm font-bold text-slate-900; }
+  .workspace-quote > div { @apply flex items-start justify-between gap-3 text-slate-600; }
+  .workspace-quote > div strong { @apply text-right font-semibold text-slate-800; }
+  .workspace-quote-total { @apply mt-1 border-t border-cyan-200 pt-3 font-semibold; }
+  .workspace-prerequisite { @apply rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900; }
+  .workspace-prerequisite a { @apply font-semibold text-cyan-800 underline underline-offset-2; }
+  .workspace-report-controls { @apply flex flex-wrap items-end gap-4; }
+  .workspace-report-controls .workspace-field { @apply min-w-44 flex-1; }
+  .workspace-report-controls .workspace-primary-button { @apply w-auto; }
+  .workspace-report-note { @apply rounded-xl bg-cyan-50 p-3 text-xs text-cyan-900; }
+  .workspace-statement-heading { @apply flex flex-wrap items-center justify-between gap-4; }
+  .workspace-statement-heading h2 { @apply mt-1 text-xl font-bold text-slate-900; }
+  .workspace-statement-heading p { @apply mt-1 text-xs text-slate-500; }
+  .workspace-report-kicker { @apply text-[10px] font-bold tracking-[.15em] text-cyan-700; }
+  .workspace-credit-chip { @apply grid gap-1 rounded-xl bg-cyan-50 px-4 py-3; }
+  .workspace-credit-chip small { @apply text-[11px] font-medium text-slate-500; }
+  .workspace-credit-chip strong { @apply text-base font-bold text-slate-900; }
+  .workspace-statement-table .workspace-table { min-width: 1050px; }
+  .workspace-overdue { @apply font-semibold text-rose-600; }
+  .workspace-totals { @apply grid gap-3 sm:grid-cols-2 xl:grid-cols-4; }
+  .workspace-total-card { @apply grid gap-2 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm; }
+  .workspace-total-card small { @apply text-xs text-slate-500; }
+  .workspace-total-card strong { @apply text-lg font-bold text-slate-800; }
+  .workspace-total-highlight { @apply border-cyan-300 bg-cyan-50; }
+  .workspace-total-highlight small { @apply text-cyan-800; }
+  .workspace-total-highlight strong { @apply text-xl text-slate-900; }
+  .workspace-future-balance { @apply text-right text-xs text-slate-500; }
+}
+
+@media (max-width: 900px) {
+  .workspace-customer-grid, .workspace-product-grid, .workspace-pos-grid { grid-template-columns: minmax(0, 1fr); }
+  .workspace-form { @apply order-1; }
+  .workspace-list-card { @apply order-2; }
+}
+
+@media print {
+  .app-header, .page-title, .print-hide, .workspace-intro, .workspace-report-controls, .workspace-report-note, [role="alert"] { display: none !important; }
+  .app-main { max-width: none !important; padding: 0 !important; }
+  .workspace-page { gap: 12px !important; }
+  .workspace-card, .workspace-total-card { break-inside: avoid; box-shadow: none !important; }
+  .workspace-statement-table .workspace-table { min-width: 0; font-size: 9px; }
+  .workspace-statement-table .workspace-table th, .workspace-statement-table .workspace-table td { padding: 5px; }
+}
