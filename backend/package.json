@@ -1,0 +1,6 @@
+{"name":"fiado-api","main":"src/server.js","scripts":{
+"start":"node src/server.js",
+"seed:admin":"node scripts/seed-platform-admin.js",
+"test":"node --test test/finance.test.js test/api.test.js",
+"test:integration":"node --env-file=.env.test scripts/setup-test-db.js && node --env-file=.env.test --test --test-concurrency=1 test/integration.test.js"},
+"dependencies":{"bcrypt":"^5.1.1","cors":"^2.8.5","decimal.js":"^10.4.3","dotenv":"^16.4.5","express":"^4.19.2","express-rate-limit":"^7.4.0","jsonwebtoken":"^9.0.2","mysql2":"^3.9.7"}}
