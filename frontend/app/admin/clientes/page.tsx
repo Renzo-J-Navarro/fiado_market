@@ -9,6 +9,12 @@ type Customer = {
   id: number;
   nombre: string;
   dni: string;
+  telefono: string | null;
+  direccion: string | null;
+  email: string | null;
+  activo: boolean | number;
+  capitalizacion: number;
+  tipo_tasa_mora: 'TEA' | 'TNA';
   lmc: number;
   creditoUsado: number;
   disponible: number;
@@ -90,6 +96,15 @@ export default function Clientes() {
     }
   }
 
+  async function setActive(customer: Customer, activo: boolean) {
+    setErr(''); setNotice(''); setBusy(true);
+    try {
+      await api(`/customers/${customer.id}/estado`, { method: 'PATCH', body: JSON.stringify({ activo }) });
+      setNotice(activo ? `${customer.nombre} fue reactivado.` : `${customer.nombre} fue dado de baja: no podrá comprar al crédito ni ingresar, pero su historial se conserva.`);
+      await load();
+    } catch (error) { setErr((error as Error).message); } finally { setBusy(false); }
+  }
+
   async function copyInvite() {
     if (!invite) return;
     try {
@@ -142,6 +157,11 @@ export default function Clientes() {
               <Field label="DNI" name="dni" type="text" inputMode="numeric" autoComplete="off" minLength={8} maxLength={8} pattern="[0-9]{8}" required
                 onChange={event => { event.currentTarget.value = event.currentTarget.value.replace(/\D/g, '').slice(0, 8); }}
                 help="DNI de 8 dígitos; también se usa para iniciar sesión." />
+              <div className="workspace-form-pair">
+                <Field label="Teléfono (opcional)" name="telefono" type="tel" maxLength={15} help="Celular para coordinar cobros o enviar el enlace de acceso." />
+                <Field label="Correo (opcional)" name="email" type="email" maxLength={120} help="Correo de contacto del cliente." />
+              </div>
+              <Field label="Dirección (opcional)" name="direccion" maxLength={160} help="Dirección de la vivienda dentro de la zona de influencia." />
               <Field label="Línea de crédito" name="lmc" type="number" step="0.01" min="0.01" max="500" required help="Monto máximo de deuda: S/ 500.00." />
               <div className="workspace-form-pair">
                 <Field label="Día de corte" name="diaCorte" type="number" min="1" max="30" step="1" defaultValue="20" required help="Último día del ciclo de compras." />
@@ -151,7 +171,11 @@ export default function Clientes() {
                 <Field label="Tipo de tasa" name="tipoTasa" options={['TEA', 'TNA']} help="Tasa efectiva o nominal anual." />
                 <Field label="Tasa pactada (%)" name="tasa" type="number" step="0.01" min="0.01" max="114.13" required help="Tope legal: 114.13% anual." />
               </div>
-              <Field label="Tasa moratoria anual (%)" name="tasaMora" type="number" step="0.01" min="0" max="15" defaultValue="0" required help="Se aplica por atraso; máximo 15%." />
+              <Field label="Capitalización (si la tasa es nominal)" name="capitalizacion" options={['1', '15', '30']} defaultValue="1" help="Días de cada periodo de capitalización de una tasa nominal: 1 = diaria, 15 = quincenal, 30 = mensual (m = 360 / días)." />
+              <div className="workspace-form-pair">
+                <Field label="Tipo de tasa moratoria" name="tipoTasaMora" options={['TEA', 'TNA']} help="La tasa moratoria también puede pactarse como efectiva o nominal anual." />
+                <Field label="Tasa moratoria anual (%)" name="tasaMora" type="number" step="0.01" min="0" max="15" defaultValue="0" required help="Se aplica solo por los días de atraso; máximo 15%." />
+              </div>
               <div className="workspace-form-pair">
                 <Field label="Moneda" name="moneda" options={['PEN', 'USD']} help="Moneda de la línea y de los créditos." />
                 <Field label="Plazo máximo (meses)" name="plazoMax" type="number" min="1" max="60" step="1" defaultValue="12" required help="Máximo de cuotas mensuales que puede elegir." />
@@ -168,12 +192,13 @@ export default function Clientes() {
                 <table className="workspace-table">
                   <thead><tr><th>Cliente</th><th>Línea / disponible</th><th>Corte / pago</th><th>Tasa</th><th>Acceso</th><th aria-label="Acciones" /></tr></thead>
                   <tbody>{list.map(customer => <tr key={customer.id}>
-                    <td><strong>{customer.nombre}</strong><small>DNI {customer.dni}</small></td>
+                    <td><strong>{customer.nombre}</strong><small>DNI {customer.dni}{customer.telefono ? ` · ${customer.telefono}` : ''}</small>{!customer.activo && <small className="workspace-overdue">De baja</small>}</td>
                     <td><strong>{formatCurrency(customer.lmc, customer.moneda)}</strong><small>Disponible {formatCurrency(customer.disponible, customer.moneda)}</small></td>
                     <td>{customer.dia_corte} / {customer.dia_pago}<small>Día de corte / pago</small></td>
-                    <td>{customer.tipo_tasa} {Number(customer.tasa)}%<small>Mora {Number(customer.tasa_mora)}%</small></td>
+                    <td>{customer.tipo_tasa} {Number(customer.tasa)}%{customer.tipo_tasa === 'TNA' ? <small>Cap. cada {customer.capitalizacion} día(s)</small> : null}<small>Mora {customer.tipo_tasa_mora} {Number(customer.tasa_mora)}%</small></td>
                     <td><span className={customer.accesoActivo ? 'workspace-access workspace-access-active' : 'workspace-access'}>{customer.accesoActivo ? 'Activo' : 'Pendiente'}</span></td>
-                    <td><button type="button" disabled={busy} onClick={() => resetAccess(customer)} className="workspace-text-button">{customer.accesoActivo ? 'Restablecer clave' : 'Crear acceso'}</button></td>
+                    <td><button type="button" disabled={busy || !customer.activo} onClick={() => resetAccess(customer)} className="workspace-text-button">{customer.accesoActivo ? 'Restablecer clave' : 'Crear acceso'}</button>
+                      <button type="button" disabled={busy} onClick={() => setActive(customer, !customer.activo)} className="workspace-text-button">{customer.activo ? 'Dar de baja' : 'Reactivar'}</button></td>
                   </tr>)}</tbody>
                 </table>
               </div>

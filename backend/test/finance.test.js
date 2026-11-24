@@ -64,3 +64,19 @@ test('pagos inválidos se rechazan', () => {
   for (const bad of [-1, -0.01, NaN, Infinity, '5', null]) assert.throws(() => F.liquidar(cuotas(), '2026-11-24', 15, bad), RangeError);
   assert.throws(() => F.liquidar(cuotas(), 'no-es-fecha', 15, 1), RangeError);
 });
+test('capitalización de la tasa nominal y mora nominal', () => {
+  near(F.rates('TNA', 24, 30).tea.toNumber(), Math.pow(1.02, 12) - 1, 1e-12);        // m = 12
+  near(F.rates('TNA', 24, 15).tea.toNumber(), Math.pow(1.01, 24) - 1, 1e-12);        // m = 24
+  assert.throws(() => F.rates('TNA', 24, 7), RangeError);
+  const efectiva = F.mora(100, '2026-10-25', '2026-11-25', 15).mora;
+  const nominal = F.mora(100, '2026-10-25', '2026-11-25', 15, 'TNA', 1).mora;          // (1+0.15/360)^30−1
+  assert.equal(nominal, 1.26); assert.ok(nominal > efectiva);
+});
+test('ciclo de pago según día de corte y día de pago (ejemplo del enunciado)', () => {
+  assert.deepEqual(F.cicloDePago('2026-09-15', 20, 26), { corte: '2026-09-20', pago: '2026-09-26' });
+  assert.deepEqual(F.cicloDePago('2026-09-27', 20, 26), { corte: '2026-10-20', pago: '2026-10-26' });
+  // compra 15/09, corte 20, pago 26: 11 días de gracia y cuotas desde el 26/10
+  const rows = F.buildSchedule({ monto: 300, compra: '2026-09-15', pagoDate: F.fechaPagoPactada('2026-09-15', 20, 26), plazo: 3, tipo: 'TEA', tasa: 60, diaPago: 26 });
+  assert.equal(F.days360('2026-09-15', '2026-09-26'), 11);
+  assert.deepEqual(rows.map(r => r.due), ['2026-10-26', '2026-11-26', '2026-12-26']);
+});

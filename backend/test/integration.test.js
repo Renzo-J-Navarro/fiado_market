@@ -91,6 +91,36 @@ test('el usuario comercial puede gestionar clientes, productos, ventas y cobros'
   assert.equal((await call('GET', '/statement/me', null, S.CLIENT)).status, 200);
   assert.equal((await call('POST', '/payments', { customerId: S.CUSTOMER, fecha: V.today(), monto: 1 }, S.CLIENT)).status, 403);
 });
+test('requisitos del enunciado: producto completo, bajas, listado del ciclo y sin pagos parciales', async () => {
+  const full = await call('POST', '/products', { nombre: 'Aceite', descripcion: 'Botella 1 L', marca: 'Primor', proveedor: 'Alicorp',
+    unidadMedida: 'litro', precioContado: 9, precioLista: 10 }, S.RUC);
+  assert.equal(full.status, 201);
+  assert.equal((await call('POST', '/products', { nombre: 'X', unidadMedida: 'barril', precioContado: 1, precioLista: 1 }, S.RUC)).status, 400);
+  const listed = (await call('GET', '/products', null, S.RUC)).body.find(p => p.id === full.body.id);
+  assert.equal(listed.marca, 'Primor'); assert.equal(listed.unidad_medida, 'litro'); assert.equal(Boolean(listed.activo), true);
+  assert.equal((await call('PATCH', `/products/${full.body.id}/estado`, { activo: false }, S.RUC)).status, 200);
+  assert.equal((await call('POST', '/sales/preview', { customerId: S.CUSTOMER, productId: full.body.id, fechaCompra: V.today(), plazo: 1 }, S.RUC)).status, 409);
+  assert.equal((await call('DELETE', `/products/${S.PRODUCT}`, null, S.RUC)).status, 409);   // tiene ventas
+  assert.equal((await call('DELETE', `/products/${full.body.id}`, null, S.RUC)).status, 200);
+  // cliente con datos generales y mora nominal
+  const nominal = await call('POST', '/customers', customer('44444444', { telefono: '987654321', direccion: 'Jr. Las Flores 123',
+    tipoTasa: 'TNA', capitalizacion: 30, tipoTasaMora: 'TNA' }), S.RUC);
+  assert.equal(nominal.status, 201);
+  assert.equal((await call('POST', '/customers', customer('55555555', { capitalizacion: 7 }), S.RUC)).status, 400);
+  const row = (await call('GET', '/customers', null, S.RUC)).body.find(c => c.id === nominal.body.id);
+  assert.equal(row.telefono, '987654321'); assert.equal(Number(row.capitalizacion), 30); assert.equal(row.tipo_tasa_mora, 'TNA');
+  assert.equal((await call('PATCH', `/customers/${nominal.body.id}/estado`, { activo: false }, S.RUC)).status, 200);
+  assert.equal((await call('POST', '/sales/preview', { customerId: nominal.body.id, productId: S.PRODUCT, fechaCompra: V.today(), plazo: 1 }, S.RUC)).status, 409);
+  assert.equal((await call('DELETE', `/customers/${nominal.body.id}`, null, S.RUC)).status, 200);   // sin movimientos
+  // listado del ciclo y pago completo
+  const st = await call('GET', `/statement/${S.CUSTOMER}`, null, S.RUC);
+  assert.equal(st.status, 200); assert.ok(st.body.fechaPagoCiclo); assert.ok(Array.isArray(st.body.itemsMora));
+  const total = st.body.totales.totalFecha; assert.ok(total > 0);
+  assert.equal((await call('POST', '/payments', { customerId: S.CUSTOMER, fecha: V.today(), monto: 1 }, S.RUC)).status, 422);
+  assert.equal((await call('POST', '/payments', { customerId: S.CUSTOMER, fecha: V.today(), monto: total }, S.RUC)).status, 201);
+  assert.equal((await call('GET', `/statement/${S.CUSTOMER}`, null, S.RUC)).body.totales.totalFecha, 0);
+  assert.equal((await call('DELETE', `/customers/${S.CUSTOMER}`, null, S.RUC)).status, 409);   // tiene historial
+});
 test('el administrador global lista, desactiva y no puede borrar historiales financieros', async () => {
   const admin = await call('POST', '/auth/login', { email: 'platform@test.pe', password: 'Platform-test-password-9' });
   assert.equal(admin.status, 200); assert.equal(admin.body.role, 'SUPERADMIN'); S.ROOT = admin.body.token;

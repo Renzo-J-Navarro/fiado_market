@@ -11,6 +11,8 @@ async function cotizarVenta(storeId, { customerId, productId, fechaCompra, plazo
   const [[c]] = await conn.query(`SELECT * FROM customers WHERE id=? AND store_id=?${lock ? ' FOR UPDATE' : ''}`, [customerId, storeId]);
   const [[p]] = await conn.query('SELECT * FROM products WHERE id=? AND store_id=?', [productId, storeId]);
   if (!c || !p) throw new HttpError(404, 'Cliente o producto no encontrado');
+  if (!c.activo) throw new HttpError(409, 'El cliente está dado de baja; reactívalo para venderle al crédito');
+  if (!p.activo) throw new HttpError(409, 'El producto está dado de baja');
   if (!Number.isInteger(cantidad) || cantidad < 1 || cantidad > 9999) throw new HttpError(400, 'La cantidad debe ser un entero entre 1 y 9999');
   if (plazo > c.plazo_max) throw new HttpError(400, `Plazo máximo del cliente: ${c.plazo_max} meses`);
   if ((plazo === 1 && !p.permite_fin_mes) || (plazo > 1 && !p.permite_cuotas)) throw new HttpError(400, 'Modalidad no permitida para este producto');
@@ -18,7 +20,7 @@ async function cotizarVenta(storeId, { customerId, productId, fechaCompra, plazo
   const monto = F.r2(Number(p.precio_lista) * cantidad);
   if (monto > disponible) throw new HttpError(422, `Excede la línea disponible (S/ ${disponible.toFixed(2)})`);
   const pagoDate = F.fechaPagoPactada(fechaCompra, c.dia_corte, c.dia_pago);
-  const rows = F.buildSchedule({ monto, compra: fechaCompra, pagoDate, plazo, tipo: c.tipo_tasa, tasa: c.tasa, diaPago: c.dia_pago });
+  const rows = F.buildSchedule({ monto, compra: fechaCompra, pagoDate, plazo, tipo: c.tipo_tasa, tasa: c.tasa, diaPago: c.dia_pago, capDias: c.capitalizacion });
   return {
     customerId: c.id, customerName: c.nombre, currency: c.moneda, line: Number(c.lmc),
     available: disponible, remainingAvailable: F.r2(disponible - monto),
@@ -40,46 +42,66 @@ async function registrarVenta(storeId, { customerId, productId, fechaCompra, pla
   });
 }
 
+const opcionesMora = c => ({ tipoMora: c.tipo_tasa_mora || 'TEA', capDias: c.capitalizacion || 1 });
+const sum = (rows, key) => F.r2(rows.reduce((a, x) => a + Number(x[key]), 0));
+
+// Listado de pago del ciclo: cuotas que vencen hasta la fecha de pago del ciclo consultado
+// (incluye las vencidas de ciclos anteriores, que generan mora).
+function liquidarCiclo(c, cuotas, efectiva, pago = 0) {
+  const ciclo = F.cicloDePago(efectiva, c.dia_corte, c.dia_pago);
+  const det = F.liquidar(cuotas, efectiva, c.tasa_mora, pago, opcionesMora(c));
+  const delCiclo = det.filter(row => String(row.due).slice(0, 10) <= ciclo.pago);
+  return { ciclo, det, delCiclo, totalCiclo: sum(delCiclo, 'totalExigible') };
+}
+
 // VISTA PREVIA: no persiste nada. El pago real se confirma solo con registrarPago().
 async function estadoCuenta(storeId, customerId, efectiva, pago = 0) {
   const [[c]] = await db.query('SELECT * FROM customers WHERE id=? AND store_id=?', [customerId, storeId]);
   if (!c) throw new HttpError(404, 'Cliente no encontrado');
   const [cuotas] = await db.query(sel, [customerId]);
-  const det = F.liquidar(cuotas, efectiva, c.tasa_mora, pago).map(row => ({
+  const { ciclo, det: base, delCiclo, totalCiclo } = liquidarCiclo(c, cuotas, efectiva, pago);
+  const det = base.map(row => ({
     ...row,
-    diasTranscurridos: Math.max(0, F.days360(row.fechaCompra, efectiva)),
+    delCiclo: String(row.due).slice(0, 10) <= ciclo.pago,
+    diasTranscurridos: Math.max(0, F.days360(row.fechaCompra, String(row.due).slice(0, 10) < efectiva ? row.due : efectiva)),
     montoCuota: F.r2(Number(row.capital) + Number(row.interes)),
+  }))
+    // lista de compras ordenada por fecha de compra (y número de cuota)
+    .sort((a, b) => String(a.fechaCompra).localeCompare(String(b.fechaCompra)) || a.sale_id - b.sale_id || a.n - b.n);
+  // intereses por mora como ítem separado del listado
+  const itemsMora = det.filter(row => row.mora > 0).map(row => ({
+    concepto: 'Intereses por mora', saleId: row.sale_id, cuota: row.n, producto: row.producto, vencimiento: row.due,
+    diasMora: row.diasMora, base: F.r2(Number(row.pendInteres) + Number(row.pendCapital)), mora: row.mora,
+    tasa: Number(c.tasa_mora), tipoTasa: c.tipo_tasa_mora || 'TEA',
   }));
-  const sum = (rows, key) => F.r2(rows.reduce((a, x) => a + Number(x[key]), 0));
-  const endOfMonth = `${efectiva.slice(0, 7)}-${String(new Date(Date.UTC(
-    Number(efectiva.slice(0, 4)), Number(efectiva.slice(5, 7)), 0,
-  )).getUTCDate()).padStart(2, '0')}`;
-  const vencidoEsteMes = det.filter(row => row.due <= endOfMonth);
   const totalRestante = sum(det, 'totalExigible');
-  const totalFecha = sum(vencidoEsteMes, 'totalExigible');
   return {
-    cliente: { nombre: c.nombre, lmc: c.lmc, moneda: c.moneda, disponible: F.r2(c.lmc - await creditoUsado(c.id)) },
-    fechaEfectiva: efectiva, vistaPrevia: pago > 0, fechaCorteReporte: endOfMonth, detalle: det,
+    cliente: { nombre: c.nombre, lmc: c.lmc, moneda: c.moneda, activo: !!c.activo, disponible: F.r2(c.lmc - await creditoUsado(c.id)) },
+    fechaEfectiva: efectiva, vistaPrevia: pago > 0, fechaCorteReporte: ciclo.corte, fechaPagoCiclo: ciclo.pago,
+    detalle: det, itemsMora,
     totales: {
       mora: sum(det, 'mora'), interes: sum(det, 'pendInteres'), capital: sum(det, 'pendCapital'),
-      deudaExigible: F.r2(sum(vencidoEsteMes, 'pendInteres') + sum(vencidoEsteMes, 'pendCapital')),
-      interesFecha: sum(vencidoEsteMes, 'pendInteres'), moraFecha: sum(vencidoEsteMes, 'mora'),
-      totalFecha, pendienteFuturo: F.r2(totalRestante - totalFecha), exigible: totalRestante,
+      deudaExigible: F.r2(sum(delCiclo, 'pendInteres') + sum(delCiclo, 'pendCapital')),
+      interesFecha: sum(delCiclo, 'pendInteres'), moraFecha: sum(delCiclo, 'mora'),
+      totalFecha: totalCiclo, pendienteFuturo: F.r2(totalRestante - totalCiclo), exigible: totalRestante,
     },
   };
 }
 
-// PAGO CONFIRMADO: imputa mora → interés → capital, actualiza cuotas y registra en payments (atómico).
+// PAGO CONFIRMADO: el enunciado no permite pagos parciales. El monto debe ser exactamente el total
+// a pagar del ciclo (cuotas vencidas + mora). Imputa mora → interés → capital y registra (atómico).
 async function registrarPago(storeId, { customerId, fecha, monto }) {
   if (fecha > today()) throw new HttpError(400, 'La fecha de pago no puede ser posterior a hoy');
   return db.tx(async conn => {
     const [[c]] = await conn.query('SELECT * FROM customers WHERE id=? AND store_id=? FOR UPDATE', [customerId, storeId]);
     if (!c) throw new HttpError(404, 'Cliente no encontrado');
     const [cuotas] = await conn.query(sel + ' FOR UPDATE', [customerId]);
-    const det = F.liquidar(cuotas, fecha, c.tasa_mora, monto); const exigible = F.r2(det.reduce((a, x) => a + x.totalExigible, 0));
-    if (monto > exigible) throw new HttpError(422, `El pago excede la deuda exigible (S/ ${exigible.toFixed(2)})`);
+    const { totalCiclo } = liquidarCiclo(c, cuotas, fecha, 0);
+    if (totalCiclo <= 0) throw new HttpError(422, 'No hay deuda por pagar en este ciclo');
+    if (Math.abs(monto - totalCiclo) >= 0.005) throw new HttpError(422, `No se permiten pagos parciales: el pago debe ser exactamente ${totalCiclo.toFixed(2)}`);
+    const det = F.liquidar(cuotas, fecha, c.tasa_mora, monto, opcionesMora(c));
     const aplicado = det.filter(x => x.imputado.mora || x.imputado.interes || x.imputado.capital);
     for (const x of aplicado) await conn.query('UPDATE installments SET paid_mora=paid_mora+?,paid_interes=paid_interes+?,paid_capital=paid_capital+? WHERE id=?', [x.imputado.mora, x.imputado.interes, x.imputado.capital, x.id]);
     const [p] = await conn.query('INSERT INTO payments(customer_id,fecha,monto) VALUES(?,?,?)', [c.id, fecha, monto]);
-    return { paymentId: p.insertId, exigibleAntes: exigible, aplicado: aplicado.map(x => ({ saleId: x.sale_id, cuota: x.n, ...x.imputado })) }; }); }
+    return { paymentId: p.insertId, exigibleAntes: totalCiclo, aplicado: aplicado.map(x => ({ saleId: x.sale_id, cuota: x.n, ...x.imputado })) }; }); }
 module.exports = { registrarVenta, cotizarVenta, estadoCuenta, registrarPago, creditoUsado };

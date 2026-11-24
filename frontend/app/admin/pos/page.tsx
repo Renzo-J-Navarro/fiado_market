@@ -6,10 +6,10 @@ import Shell from '@/components/Shell';
 import Field, { btnCls, Msg } from '@/components/Field';
 import { api, post, money, today } from '@/lib/api';
 
-type Customer = { id: number; nombre: string; dni: string; moneda: string; disponible: number; plazo_max: number };
+type Customer = { id: number; nombre: string; dni: string; moneda: string; disponible: number; plazo_max: number; activo?: boolean | number };
 type Product = {
   id: number; nombre: string; precio_lista: number;
-  permite_fin_mes: boolean | number; permite_cuotas: boolean | number;
+  permite_fin_mes: boolean | number; permite_cuotas: boolean | number; activo?: boolean | number;
 };
 type Quote = {
   customerName: string; currency: string; available: number; remainingAvailable: number;
@@ -48,7 +48,10 @@ export default function POS() {
   const loadRecent = useCallback(async () => setRecent(await api<Sale[]>('/sales/recent?limit=8')), []);
   useEffect(() => {
     Promise.all([api<Customer[]>('/customers'), api<Product[]>('/products'), api<Sale[]>('/sales/recent?limit=8')])
-      .then(([nextCustomers, nextProducts, nextSales]) => {
+      .then(([allCustomers, allProducts, nextSales]) => {
+        // solo clientes y productos activos se pueden usar en una venta al crédito
+        const nextCustomers = allCustomers.filter(item => item.activo === undefined || Boolean(item.activo));
+        const nextProducts = allProducts.filter(item => item.activo === undefined || Boolean(item.activo));
         setCustomers(nextCustomers); setProducts(nextProducts); setRecent(nextSales);
         setCustomerId(nextCustomers[0] ? String(nextCustomers[0].id) : '');
         setProductId(nextProducts[0] ? String(nextProducts[0].id) : '');

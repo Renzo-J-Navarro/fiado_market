@@ -2,6 +2,7 @@ const r = require('express').Router(); const db = require('../db'); const svc = 
 const jwt = require('jsonwebtoken'); const config = require('../config');
 const { wrap, auth } = require('../middleware'); const V = require('../validate'); const { issue } = require('../services/tokens'); const ADMIN = auth(['ADMIN']);
 const id = (v, n = 'id') => V.num(v, n, { min: 1, int: true });
+const UNIDADES = ['unidad', 'kg', 'g', 'litro', 'ml', 'paquete', 'caja', 'docena', 'servicio'];
 
 r.get('/me', auth(['SUPERADMIN', 'ADMIN', 'CLIENTE']), wrap(async (q, s) => {
   if (q.user.role === 'SUPERADMIN') {
@@ -137,18 +138,40 @@ r.post('/customers', ADMIN, wrap(async (q, s) => { const b = q.body || {};
   const pago = V.num(b.diaPago, 'día de pago', { min: corte, max: 30, int: true }), tipo = V.oneOf(b.tipoTasa, 'tipo de tasa', ['TEA', 'TNA']);
   const tasa = V.num(b.tasa, 'tasa pactada', { min: 0.0001, max: 114.13 }), mora = V.num(b.tasaMora, 'tasa moratoria', { min: 0, max: 15 });
   const moneda = V.oneOf(b.moneda ?? 'PEN', 'moneda', ['PEN', 'USD']), plazo = V.num(b.plazoMax, 'plazo máximo', { min: 1, max: 60, int: true });
+  const tipoMora = V.oneOf(b.tipoTasaMora ?? 'TEA', 'tipo de tasa moratoria', ['TEA', 'TNA']);
+  const cap = V.num(b.capitalizacion ?? 1, 'capitalización', { min: 1, max: 30, int: true });
+  if (![1, 15, 30].includes(cap)) throw V.bad('La capitalización debe ser diaria (1), quincenal (15) o mensual (30)');
+  const opt = (v, name, max, re, msg) => (v === undefined || v === null || String(v).trim() === '') ? null : V.str(v, name, { max, ...(re ? { re, msg } : {}) });
+  const telefono = opt(b.telefono, 'teléfono', 15, /^[0-9+ ]{6,15}$/, 'Teléfono no válido');
+  const direccion = opt(b.direccion, 'dirección', 160), correo = opt(b.email, 'correo', 120, /^[^\s@]+@[^\s@]+\.[^\s@]+$/, 'Correo no válido');
   const [[existing]] = await db.query('SELECT id FROM customers WHERE store_id=? AND dni=?', [q.user.storeId, dni]);
   if (existing) throw new V.HttpError(409, 'Ya existe un cliente de esta tienda con ese DNI');
   const out = await db.tx(async c => {
     const [u] = await c.query('INSERT INTO users(store_id,email,password_hash,role) VALUES(?,?,NULL,"CLIENTE")', [q.user.storeId, `${dni}.${q.user.storeId}@cliente.local`]);
-    const [k] = await c.query('INSERT INTO customers(store_id,user_id,nombre,dni,lmc,dia_corte,dia_pago,tipo_tasa,tasa,tasa_mora,moneda,plazo_max) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)', [q.user.storeId, u.insertId, nombre, dni, lmc, corte, pago, tipo, tasa, mora, moneda, plazo]);
+    const [k] = await c.query('INSERT INTO customers(store_id,user_id,nombre,dni,telefono,direccion,email,lmc,dia_corte,dia_pago,tipo_tasa,capitalizacion,tasa,tipo_tasa_mora,tasa_mora,moneda,plazo_max) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [q.user.storeId, u.insertId, nombre, dni, telefono, direccion, correo, lmc, corte, pago, tipo, cap, tasa, tipoMora, mora, moneda, plazo]);
     return { id: k.insertId, setupToken: await issue(c, u.insertId) }; });
   s.status(201).json(out); }));
 // Recuperación: el comercio emite un nuevo enlace (el cliente no tiene email).
 r.post('/customers/:id/reset-token', ADMIN, wrap(async (q, s) => {
   const [[c]] = await db.query('SELECT user_id FROM customers WHERE id=? AND store_id=?', [id(q.params.id), q.user.storeId]);
   if (!c) throw new V.HttpError(404, 'Cliente no encontrado'); s.json({ setupToken: await db.tx(cn => issue(cn, c.user_id)) }); }));
-r.get('/customers', ADMIN, wrap(async (q, s) => s.json((await db.query(`SELECT c.id,c.nombre,c.dni,c.lmc,c.dia_corte,c.dia_pago,c.tipo_tasa,c.tasa,c.tasa_mora,c.moneda,c.plazo_max,
+// Alta/baja de clientes: la baja bloquea nuevas ventas y conserva el historial; solo se elimina sin movimientos.
+r.patch('/customers/:id/estado', ADMIN, wrap(async (q, s) => {
+  const b = q.body || {}; if (typeof b.activo !== 'boolean') throw V.bad('activo debe ser verdadero o falso');
+  const [[c]] = await db.query('SELECT id,user_id FROM customers WHERE id=? AND store_id=?', [id(q.params.id), q.user.storeId]);
+  if (!c) throw new V.HttpError(404, 'Cliente no encontrado');
+  await db.tx(async cn => { await cn.query('UPDATE customers SET activo=? WHERE id=?', [b.activo, c.id]);
+    if (c.user_id) await cn.query('UPDATE users SET active=? WHERE id=?', [b.activo, c.user_id]); });
+  s.json({ id: c.id, activo: b.activo }); }));
+r.delete('/customers/:id', ADMIN, wrap(async (q, s) => {
+  const [[c]] = await db.query('SELECT id,user_id FROM customers WHERE id=? AND store_id=?', [id(q.params.id), q.user.storeId]);
+  if (!c) throw new V.HttpError(404, 'Cliente no encontrado');
+  const [[used]] = await db.query('SELECT EXISTS(SELECT 1 FROM sales WHERE customer_id=?) v, EXISTS(SELECT 1 FROM payments WHERE customer_id=?) p', [c.id, c.id]);
+  if (used.v || used.p) throw new V.HttpError(409, 'El cliente tiene compras o pagos; dalo de baja para conservar su historial');
+  await db.tx(async cn => { await cn.query('DELETE FROM customers WHERE id=?', [c.id]);
+    if (c.user_id) { await cn.query('DELETE FROM password_tokens WHERE user_id=?', [c.user_id]); await cn.query('DELETE FROM users WHERE id=?', [c.user_id]); } });
+  s.json({ ok: true }); }));
+r.get('/customers', ADMIN, wrap(async (q, s) => s.json((await db.query(`SELECT c.id,c.nombre,c.dni,c.telefono,c.direccion,c.email,c.activo,c.lmc,c.dia_corte,c.dia_pago,c.tipo_tasa,c.capitalizacion,c.tasa,c.tipo_tasa_mora,c.tasa_mora,c.moneda,c.plazo_max,
   COALESCE(used.capital_usado,0) creditoUsado,GREATEST(c.lmc-COALESCE(used.capital_usado,0),0) disponible,
   (u.password_hash IS NOT NULL) AS accesoActivo
   FROM customers c JOIN users u ON u.id=c.user_id
@@ -160,8 +183,23 @@ r.post('/products', ADMIN, wrap(async (q, s) => { const b = q.body || {};
   const contado = V.num(b.precioContado, 'precio al contado', { min: 0.01, max: 1e6 }), lista = V.num(b.precioLista, 'precio de lista', { min: contado, max: 1e6 });
   const img = b.imagenUrl ? V.str(b.imagenUrl, 'imagen', { max: 255, re: /^https?:\/\//, msg: 'La imagen debe ser una URL http(s)' }) : null;
   const fin = b.finMes ?? true, cuo = b.cuotas ?? true; if (typeof fin !== 'boolean' || typeof cuo !== 'boolean' || !(fin || cuo)) throw V.bad('Debe permitir al menos una modalidad');
-  const [p] = await db.query('INSERT INTO products(store_id,nombre,imagen_url,precio_contado,precio_lista,permite_fin_mes,permite_cuotas) VALUES(?,?,?,?,?,?,?)', [q.user.storeId, V.str(b.nombre, 'nombre'), img, contado, lista, fin, cuo]);
+  const opt = (v, name, max) => (v === undefined || v === null || String(v).trim() === '') ? null : V.str(v, name, { max });
+  const unidad = V.oneOf(b.unidadMedida ?? 'unidad', 'unidad de medida', UNIDADES);
+  const [p] = await db.query('INSERT INTO products(store_id,nombre,descripcion,marca,proveedor,unidad_medida,imagen_url,precio_contado,precio_lista,permite_fin_mes,permite_cuotas) VALUES(?,?,?,?,?,?,?,?,?,?,?)',
+    [q.user.storeId, V.str(b.nombre, 'nombre', { max: 120 }), opt(b.descripcion, 'descripción', 255), opt(b.marca, 'marca', 80), opt(b.proveedor, 'proveedor', 120), unidad, img, contado, lista, fin, cuo]);
   s.status(201).json({ id: p.insertId }); }));
+r.patch('/products/:id/estado', ADMIN, wrap(async (q, s) => {
+  const b = q.body || {}; if (typeof b.activo !== 'boolean') throw V.bad('activo debe ser verdadero o falso');
+  const [r2] = await db.query('UPDATE products SET activo=? WHERE id=? AND store_id=?', [b.activo, id(q.params.id), q.user.storeId]);
+  if (!r2.affectedRows) throw new V.HttpError(404, 'Producto no encontrado');
+  s.json({ id: Number(q.params.id), activo: b.activo }); }));
+r.delete('/products/:id', ADMIN, wrap(async (q, s) => {
+  const pid = id(q.params.id);
+  const [[p]] = await db.query('SELECT id FROM products WHERE id=? AND store_id=?', [pid, q.user.storeId]);
+  if (!p) throw new V.HttpError(404, 'Producto no encontrado');
+  const [[used]] = await db.query('SELECT EXISTS(SELECT 1 FROM sales WHERE product_id=?) v', [pid]);
+  if (used.v) throw new V.HttpError(409, 'El producto tiene ventas registradas; dalo de baja para conservar el historial');
+  await db.query('DELETE FROM products WHERE id=?', [pid]); s.json({ ok: true }); }));
 r.get('/products', auth(['ADMIN', 'CLIENTE']), wrap(async (q, s) => s.json((await db.query('SELECT * FROM products WHERE store_id=?', [q.user.storeId]))[0])));
 
 r.get('/sales/recent', ADMIN, wrap(async (q, s) => {

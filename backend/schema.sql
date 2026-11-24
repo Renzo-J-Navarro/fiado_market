@@ -4,12 +4,15 @@ CREATE TABLE stores(id INT AUTO_INCREMENT PRIMARY KEY, ruc CHAR(11) UNIQUE NULL,
  UNIQUE KEY uq_stores_documento(tipo_documento,documento));
 CREATE TABLE users(id INT AUTO_INCREMENT PRIMARY KEY, store_id INT NOT NULL, email VARCHAR(120) UNIQUE NOT NULL, password_hash VARCHAR(100) NULL, role ENUM('ADMIN','CLIENTE') NOT NULL, active BOOLEAN NOT NULL DEFAULT TRUE, FOREIGN KEY(store_id) REFERENCES stores(id));
 CREATE TABLE customers(id INT AUTO_INCREMENT PRIMARY KEY, store_id INT NOT NULL, user_id INT NULL, nombre VARCHAR(120) NOT NULL, dni CHAR(8) NOT NULL,
+ telefono VARCHAR(15) NULL, direccion VARCHAR(160) NULL, email VARCHAR(120) NULL,
  lmc DECIMAL(10,2) NOT NULL CHECK(lmc<=500), dia_corte TINYINT NOT NULL CHECK(dia_corte BETWEEN 1 AND 30), dia_pago TINYINT NOT NULL CHECK(dia_pago BETWEEN 1 AND 30),
- tipo_tasa ENUM('TEA','TNA') NOT NULL, tasa DECIMAL(7,4) NOT NULL CHECK(tasa<=114.13), tasa_mora DECIMAL(7,4) NOT NULL CHECK(tasa_mora<=15),
- moneda ENUM('PEN','USD') DEFAULT 'PEN', plazo_max TINYINT NOT NULL, UNIQUE(store_id,dni), CHECK(dia_pago>=dia_corte),
+ tipo_tasa ENUM('TEA','TNA') NOT NULL, capitalizacion TINYINT NOT NULL DEFAULT 1 CHECK(capitalizacion IN (1,15,30)),
+ tasa DECIMAL(7,4) NOT NULL CHECK(tasa<=114.13), tipo_tasa_mora ENUM('TEA','TNA') NOT NULL DEFAULT 'TEA', tasa_mora DECIMAL(7,4) NOT NULL CHECK(tasa_mora<=15),
+ moneda ENUM('PEN','USD') DEFAULT 'PEN', plazo_max TINYINT NOT NULL, activo BOOLEAN NOT NULL DEFAULT TRUE, UNIQUE(store_id,dni), CHECK(dia_pago>=dia_corte),
  FOREIGN KEY(store_id) REFERENCES stores(id), FOREIGN KEY(user_id) REFERENCES users(id));
-CREATE TABLE products(id INT AUTO_INCREMENT PRIMARY KEY, store_id INT NOT NULL, nombre VARCHAR(120) NOT NULL, imagen_url VARCHAR(255),
- precio_contado DECIMAL(10,2) NOT NULL, precio_lista DECIMAL(10,2) NOT NULL, permite_fin_mes BOOL DEFAULT 1, permite_cuotas BOOL DEFAULT 1,
+CREATE TABLE products(id INT AUTO_INCREMENT PRIMARY KEY, store_id INT NOT NULL, nombre VARCHAR(120) NOT NULL, descripcion VARCHAR(255) NULL,
+ marca VARCHAR(80) NULL, proveedor VARCHAR(120) NULL, unidad_medida VARCHAR(20) NOT NULL DEFAULT 'unidad', imagen_url VARCHAR(255),
+ precio_contado DECIMAL(10,2) NOT NULL, precio_lista DECIMAL(10,2) NOT NULL, permite_fin_mes BOOL DEFAULT 1, permite_cuotas BOOL DEFAULT 1, activo BOOLEAN NOT NULL DEFAULT TRUE,
  CHECK(precio_lista>=precio_contado), FOREIGN KEY(store_id) REFERENCES stores(id));
 CREATE TABLE sales(id INT AUTO_INCREMENT PRIMARY KEY, store_id INT NOT NULL, customer_id INT NOT NULL, product_id INT NOT NULL,
  fecha_compra DATE NOT NULL, cantidad SMALLINT UNSIGNED NOT NULL DEFAULT 1, monto DECIMAL(10,2) NOT NULL, plazo TINYINT NOT NULL, fecha_pago_pactada DATE NOT NULL,

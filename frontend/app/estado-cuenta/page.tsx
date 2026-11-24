@@ -8,14 +8,15 @@ import { btnCls, Msg } from '@/components/Field';
 import { api, post, getSession, money, today, Session } from '@/lib/api';
 
 type Row = {
-  sale_id: number; n: number; due: string; fechaCompra: string; diasTranscurridos: number;
+  sale_id: number; n: number; due: string; delCiclo: boolean; fechaCompra: string; diasTranscurridos: number;
   producto: string; cantidad: number; plazoTotal: number; montoVenta: number; montoCuota: number;
   diasMora: number; mora: number; pendInteres: number; pendCapital: number; totalExigible: number;
   imputado: { mora: number; interes: number; capital: number };
 };
 type Statement = {
   cliente: { nombre: string; moneda: string; lmc: number; disponible: number };
-  fechaEfectiva: string; fechaCorteReporte: string; vistaPrevia: boolean; detalle: Row[];
+  fechaEfectiva: string; fechaCorteReporte: string; fechaPagoCiclo: string; vistaPrevia: boolean; detalle: Row[];
+  itemsMora: { concepto: string; saleId: number; cuota: number; producto: string; vencimiento: string; diasMora: number; base: number; mora: number; tasa: number; tipoTasa: string }[];
   totales: {
     mora: number; interes: number; capital: number; deudaExigible: number;
     interesFecha: number; moraFecha: number; totalFecha: number; pendienteFuturo: number; exigible: number;
@@ -73,8 +74,11 @@ function Cuenta({ admin }: { admin: boolean }) {
   }, [admin, customerId, date, payment]);
   useEffect(() => { load(); }, [load]);
 
+  const cycleTotal = Number(data?.totales.totalFecha ?? 0);
+  const exactPayment = payment > 0 && Math.abs(payment - cycleTotal) < 0.005;
+
   async function confirmPayment() {
-    if (!customerId || payment <= 0) return;
+    if (!customerId || !exactPayment) return;
     setError(''); setNotice('');
     try {
       await post('/payments', { customerId: Number(customerId), fecha: date, monto: payment });
@@ -104,21 +108,22 @@ function Cuenta({ admin }: { admin: boolean }) {
         </div>
         {admin && <>
           <div className="workspace-field">
-            <label htmlFor="statement-payment">Pago a registrar ({data?.cliente.moneda === 'USD' ? 'USD' : 'S/'}) <HelpTip text="Vista previa de cómo se imputará: primero mora, luego interés y finalmente capital." /></label>
+            <label htmlFor="statement-payment">Pago a registrar ({data?.cliente.moneda === 'USD' ? 'USD' : 'S/'}) <HelpTip text="No se aceptan pagos parciales: el monto debe ser el total a pagar del ciclo. Se imputa primero a la mora, luego al interés y finalmente al capital." /></label>
             <input id="statement-payment" type="number" min="0" step="0.01" value={payment}
               onChange={event => setPayment(Math.max(0, Number(event.target.value)))} />
           </div>
-          <button className={`${btnCls} workspace-primary-button`} onClick={confirmPayment} disabled={payment <= 0 || !customerId}>Registrar pago</button>
+          <button type="button" className="workspace-secondary-button" onClick={() => setPayment(cycleTotal)} disabled={cycleTotal <= 0}>Usar total del ciclo</button>
+          <button className={`${btnCls} workspace-primary-button`} onClick={confirmPayment} disabled={!exactPayment || !customerId}>Registrar pago</button>
         </>}
         {data && <button className="workspace-secondary-button print-hide" onClick={() => window.print()}><Printer size={16} /> Imprimir reporte</button>}
       </section>
       <Msg err={error} ok={notice} />
-      {payment > 0 && admin && <p className="workspace-report-note">Vista previa de imputación; el pago solo se registra al pulsar «Registrar pago».</p>}
+      {payment > 0 && admin && <p className="workspace-report-note">{exactPayment ? 'Vista previa de imputación; el pago solo se registra al pulsar «Registrar pago».' : `No se permiten pagos parciales. El pago de este ciclo debe ser ${currency} ${money(cycleTotal)}.`}</p>}
 
       {data && <>
         <section className="workspace-card workspace-statement-heading">
           <div><span className="workspace-report-kicker">REPORTE DE CUENTA</span><h2>{data.cliente.nombre}</h2>
-            <p>Corte consultado al {formatDate(date)} · Cierre del ciclo: {formatDate(data.fechaCorteReporte)}</p></div>
+            <p>Consultado al {formatDate(date)} · Fecha de corte: {formatDate(data.fechaCorteReporte)} · Fecha de pago pactada: {formatDate(data.fechaPagoCiclo)}</p></div>
           <div className="workspace-credit-chip"><small>Línea disponible</small><strong>{currency} {money(Number(data.cliente.disponible))}</strong></div>
         </section>
 
@@ -128,7 +133,7 @@ function Cuenta({ admin }: { admin: boolean }) {
             <div className="workspace-table-wrap"><table className="workspace-table">
               <thead><tr>{COLUMNS.map(([label, help]) => <th key={label}>{label}<HelpTip text={help} /></th>)}</tr></thead>
               <tbody>{data.detalle.map(row => <tr key={`${row.sale_id}-${row.n}`}>
-                <td><strong>{formatDate(row.fechaCompra)} · {row.cantidad} × {row.producto}</strong><small>Compra #{row.sale_id} · {row.plazoTotal === 1 ? 'Pago único' : `Cuota ${row.n} de ${row.plazoTotal}`}</small></td>
+                <td><strong>{formatDate(row.fechaCompra)} · {row.cantidad} × {row.producto}</strong><small>Compra #{row.sale_id} · {row.plazoTotal === 1 ? 'Pago único' : `Cuota ${row.n} de ${row.plazoTotal}`}{row.delCiclo ? ' · En este ciclo' : ' · Cuota futura'}</small></td>
                 <td>{currency} {money(Number(row.montoCuota))}</td>
                 <td>{row.diasTranscurridos}</td>
                 <td>{currency} {money(Number(row.pendInteres))}</td>
@@ -141,11 +146,24 @@ function Cuenta({ admin }: { admin: boolean }) {
           )}
         </section>
 
+        {data.itemsMora.length > 0 && <section className="workspace-card workspace-list-card workspace-statement-table">
+          <div className="workspace-card-heading"><span className="workspace-step">%</span><div><h2>Intereses por mora</h2><p>Ítem separado: interés moratorio sobre lo que debió pagarse en cada vencimiento, por los días de atraso.</p></div></div>
+          <div className="workspace-table-wrap"><table className="workspace-table">
+            <thead><tr><th>Concepto</th><th>Vencimiento</th><th>Días mora</th><th>Base</th><th>Tasa moratoria</th><th>Interés por mora</th></tr></thead>
+            <tbody>{data.itemsMora.map(item => <tr key={`m-${item.saleId}-${item.cuota}`}>
+              <td><strong>{item.concepto}</strong><small>Compra #{item.saleId} · {item.producto} · cuota {item.cuota}</small></td>
+              <td>{formatDate(item.vencimiento)}</td><td><span className="workspace-overdue">{item.diasMora}</span></td>
+              <td>{currency} {money(Number(item.base))}</td><td>{item.tipoTasa} {item.tasa}%</td>
+              <td><strong className="workspace-overdue">{currency} {money(Number(item.mora))}</strong></td>
+            </tr>)}</tbody>
+          </table></div>
+        </section>}
+
         <section className="workspace-totals" aria-label="Totales del estado de cuenta">
           <div className="workspace-total-card"><small>Interés pendiente del ciclo</small><strong>{currency} {money(Number(data.totales.interesFecha))}</strong></div>
           <div className="workspace-total-card"><small>Interés moratorio del ciclo</small><strong className={data.totales.moraFecha > 0 ? 'workspace-overdue' : ''}>{currency} {money(Number(data.totales.moraFecha))}</strong></div>
           <div className="workspace-total-card"><small>Deuda exigible del ciclo</small><strong>{currency} {money(Number(data.totales.deudaExigible))}</strong></div>
-          <div className="workspace-total-card workspace-total-highlight"><small>Total a pagar al {formatDate(date)}</small><strong>{currency} {money(Number(data.totales.totalFecha))}</strong></div>
+          <div className="workspace-total-card workspace-total-highlight"><small>Total a pagar el {formatDate(data.fechaPagoCiclo)}</small><strong>{currency} {money(Number(data.totales.totalFecha))}</strong></div>
         </section>
         {Number(data.totales.pendienteFuturo) > 0 && <p className="workspace-future-balance">Saldo pendiente de cuotas futuras: {currency} {money(Number(data.totales.pendienteFuturo))}. No está incluido en el total exigible de este ciclo.</p>}
       </>}
@@ -154,7 +172,9 @@ function Cuenta({ admin }: { admin: boolean }) {
 }
 
 export default function EstadoCuenta() {
-  const [role, setRole] = useState<Session['role']>('CLIENTE');
-  useEffect(() => { const session = getSession(); if (session) setRole(session.role); }, []);
+  // se espera a leer la sesión: si se asumiera CLIENTE, el Shell redirigiría al comercio a su inicio
+  const [role, setRole] = useState<Session['role'] | null>(null);
+  useEffect(() => { const session = getSession(); setRole(session ? session.role : 'CLIENTE'); }, []);
+  if (!role) return null;
   return <Shell role={role} title="Estado de cuenta / Reporte de corte"><Suspense><Cuenta admin={role === 'ADMIN'} /></Suspense></Shell>;
 }
