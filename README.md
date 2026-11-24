@@ -6,7 +6,7 @@
    mysql -u root -p -e "CREATE DATABASE fiado CHARACTER SET utf8mb4"
    cmd /c "mysql -u root -p fiado < backend\schema.sql"
    ```
-   Para una base existente, aplica una sola vez y en orden las migraciones que aún no hayas ejecutado: `20261103_store_dni_or_ruc.sql`, `20261103_platform_admins.sql`, `20261103_centralized_accounts.sql`, `20261104_business_accounts.sql` y `20261105_sales_quantity.sql`, todas dentro de `backend/migrations`.
+   Para una base existente, aplica una sola vez y en orden las migraciones que aún no hayas ejecutado: `20261103_store_dni_or_ruc.sql`, `20261103_platform_admins.sql`, `20261103_centralized_accounts.sql`, `20261104_business_accounts.sql`, `20261105_sales_quantity.sql` y `20261120_requisitos_enunciado.sql`, todas dentro de `backend/migrations`.
 2. **Backend:** configura `backend/.env` con la conexión MySQL, un `JWT_SECRET` de al menos 16 caracteres y los datos `SUPERADMIN_DOCUMENT_TYPE`, `SUPERADMIN_DOCUMENT`, `SUPERADMIN_EMAIL` y `SUPERADMIN_PASSWORD` (mínimo 12 caracteres). Desde `backend`, ejecuta `npm i`, `npm run seed:admin` y `npm start`.
 3. **Frontend:** desde `frontend`, ejecuta `npm i` y `npm run dev`. Abre http://localhost:3000/login.
 
@@ -44,4 +44,6 @@
 - **Cuentas de clientes:** se crean desde el comercio y definen su contraseña mediante un enlace de un solo uso (48 h; solo se guarda su hash SHA-256). Para acceder a un crédito usan la pantalla separada de clientes.
 - **Eliminación:** se permite borrar una cuenta solo si no tiene ventas ni pagos asociados. Si existe historial, se debe desactivar para conservarlo.
 - **Seguridad:** CORS por lista (`CORS_ORIGINS`), limitación de intentos en login y activación de contraseñas (`LOGIN_MAX`), errores internos solo al log, JWT HS256 de 8 h y contraseñas con bcrypt.
-- Supuestos financieros: TNA→TEA con capitalización diaria (m=360); 1ª cuota un mes después de la fecha pactada; mora sobre capital+interés pendiente de la cuota.
+- Supuestos financieros: TNA→TEA con m = 360 / días de capitalización (diaria por defecto; también quincenal o mensual); 1ª cuota un mes después de la fecha pactada; mora sobre capital+interés pendiente de la cuota, con tasa moratoria efectiva o nominal según lo pactado.
+- **Ciclo y pagos:** el estado de cuenta se arma por ciclo (fecha de corte y fecha de pago del cliente), lista las compras por fecha y muestra los intereses por mora como ítem separado. No se aceptan pagos parciales: el cobro debe ser exactamente el total del ciclo.
+- **Altas y bajas:** clientes y productos se pueden dar de baja (bloquea nuevas ventas y conserva el historial) y solo se eliminan si no tienen movimientos. El producto registra descripción, marca, proveedor y unidad de medida.
