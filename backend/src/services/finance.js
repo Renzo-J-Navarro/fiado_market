@@ -13,8 +13,11 @@ function days360(a, b) {
 // a) TEA = (1 + TNA/m)^n - 1 con n = m (m = capitalizaciones por año; 360 = diaria)
 const tnaToTea = (tna, m = 360) => new D(1).plus(new D(tna).div(m)).pow(m).minus(1);
 
-// b) tasas derivadas. tasa en % (ej. 60 => 60%)
-function rates(tipo, tasaPct, m = 360) {
+// b) tasas derivadas. tasa en % (ej. 60 => 60%). capDias = días de cada periodo de capitalización
+// de la tasa nominal (1 = diaria, 15 = quincenal, 30 = mensual), así m = 360 / capDias.
+function rates(tipo, tasaPct, capDias = 1) {
+  if (![1, 15, 30].includes(Number(capDias))) throw new RangeError('Capitalización no válida (1, 15 o 30 días)');
+  const m = 360 / Number(capDias);
   const f = new D(tasaPct).div(100);
   const tea = tipo === 'TNA' ? tnaToTea(f, m) : f;
   const one = new D(1).plus(tea);
@@ -30,8 +33,8 @@ function fechaPagoPactada(compra, corte, pago) {
 }
 
 // c) y d) Cronograma. Cuotas: 1ª cuota vence 1 mes después de la fecha de pago pactada (supuesto).
-function buildSchedule({ monto, compra, pagoDate, plazo, tipo, tasa, diaPago }) {
-  const { ted, tem } = rates(tipo, tasa);
+function buildSchedule({ monto, compra, pagoDate, plazo, tipo, tasa, diaPago, capDias = 1 }) {
+  const { ted, tem } = rates(tipo, tasa, capDias);
   const dias = Math.max(0, days360(compra, pagoDate));
   const M = new D(monto), g = new D(1).plus(ted).pow(dias);
   if (plazo === 1) {
@@ -56,21 +59,22 @@ function buildSchedule({ monto, compra, pagoDate, plazo, tipo, tasa, diaPago }) 
   return rows;
 }
 
-// e) Mora = Deuda * ((1+TEDmora)^diasMora - 1); la tasa moratoria anual se trata como TEA.
-function mora(deuda, due, efectiva, tasaMoraPct) {
+// e) Mora = Deuda * ((1+TEDmora)^diasMora - 1); la tasa moratoria pactada puede ser efectiva (TEA)
+// o nominal (TNA, con la misma capitalización del cliente).
+function mora(deuda, due, efectiva, tasaMoraPct, tipoMora = 'TEA', capDias = 1) {
   const dm = days360(due, efectiva); if (dm <= 0 || deuda <= 0) return { dias: 0, mora: 0 };
-  const { ted } = rates('TEA', tasaMoraPct);
+  const { ted } = rates(tipoMora, tasaMoraPct, capDias);
   return { dias: dm, mora: r2(new D(deuda).times(new D(1).plus(ted).pow(dm).minus(1))) };
 }
 
 // Orden legal de imputación: 1° mora, 2° interés compensatorio, 3° capital (cuotas por antigüedad).
-function liquidar(cuotas, efectiva, tasaMora, pago = 0) {
+function liquidar(cuotas, efectiva, tasaMora, pago = 0, { tipoMora = 'TEA', capDias = 1 } = {}) {
   if (typeof pago !== 'number' || !Number.isFinite(pago) || pago < 0) throw new RangeError('El pago debe ser un número finito >= 0');
   if (Number.isNaN(utc(efectiva).getTime())) throw new RangeError('Fecha efectiva inválida');
   let disp = new D(pago);
   return [...cuotas].sort((a, b) => a.due.localeCompare(b.due)).map(c => {
     const pi = r2(new D(c.interes).minus(c.paid_interes)), pc = r2(new D(c.capital).minus(c.paid_capital));
-    const m = mora(r2(new D(pi).plus(pc)), c.due, efectiva, tasaMora).mora;
+    const m = mora(r2(new D(pi).plus(pc)), c.due, efectiva, tasaMora, tipoMora, capDias).mora;
     const take = x => { const t = D.min(disp, x); disp = disp.minus(t); return r2(t); };
     const aM = take(new D(m)), aI = take(new D(pi)), aC = take(new D(pc));
     return { ...c, diasMora: Math.max(0, days360(c.due, efectiva)),
@@ -78,4 +82,11 @@ function liquidar(cuotas, efectiva, tasaMora, pago = 0) {
       imputado: { mora: aM, interes: aI, capital: aC }, saldoCapitalTras: r2(new D(pc).minus(aC)) };
   });
 }
-module.exports = { days360, tnaToTea, rates, fechaPagoPactada, buildSchedule, mora, liquidar, r2 };
+// Ciclo de facturación: la fecha de pago que corresponde a una fecha consultada y su fecha de corte.
+// Si el día consultado es <= día de pago, se paga este mes; si no, el ciclo siguiente.
+function cicloDePago(fecha, diaCorte, diaPago) {
+  const f = utc(fecha); const off = f.getUTCDate() > diaPago ? 1 : 0;
+  return { corte: iso(dateWithDay(f.getUTCFullYear(), f.getUTCMonth() + off, diaCorte)),
+           pago: iso(dateWithDay(f.getUTCFullYear(), f.getUTCMonth() + off, diaPago)) };
+}
+module.exports = { cicloDePago, days360, tnaToTea, rates, fechaPagoPactada, buildSchedule, mora, liquidar, r2 };
